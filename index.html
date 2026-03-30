@@ -2,226 +2,148 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>에빙하우스 망각곡선 매니저 v2</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>에빙하우스 학습 매니저 v3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .status-ready { border-left: 5px solid #ef4444; background-color: #fef2f2; }
-        .status-waiting { border-left: 5px solid #3b82f6; background-color: #eff6ff; }
-        .status-done { border-left: 5px solid #10b981; background-color: #ecfdf5; opacity: 0.7; }
+        .status-ready { border-left: 6px solid #ef4444; background-color: #fef2f2; animation: pulse 2s infinite; }
+        .status-waiting { border-left: 6px solid #3b82f6; background-color: #eff6ff; }
+        .status-done { border-left: 6px solid #10b981; background-color: #ecfdf5; opacity: 0.7; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4 md:p-8">
-    <div class="max-w-4xl mx-auto">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-gray-800">🧠 장기 기억 학습 매니저</h1>
-            <p class="text-gray-600">에빙하우스 망각곡선 기반 복습 스케줄러</p>
-            
-            <!-- 알림 권한 상태 표시 및 요청 버튼 -->
-            <div id="notifStatus" class="mt-4 p-2 inline-block rounded-full text-sm font-medium transition-all">
-                권한 확인 중...
-            </div>
-            <button id="testBtn" onclick="testNotification()" class="ml-2 text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">알림 테스트</button>
+<body class="bg-gray-100 min-h-screen p-4">
+    <div class="max-w-md mx-auto">
+        <header class="mb-6 text-center">
+            <h1 class="text-2xl font-bold text-gray-800">🧠 장기 기억 매니저</h1>
+            <div id="notifStatus" class="mt-2 text-xs font-bold p-1 inline-block rounded">권한 확인 중...</div>
+            <button onclick="requestNotif()" class="block mx-auto mt-2 text-blue-500 text-xs underline">알림 권한 다시 요청</button>
         </header>
 
-        <!-- 학습 등록 섹션 -->
-        <div class="bg-white p-6 rounded-xl shadow-md mb-8">
-            <div class="flex gap-2">
-                <input type="text" id="topicInput" placeholder="새로운 학습 주제를 입력하세요..." 
-                    class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <button onclick="addTopic()" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition">등록</button>
-            </div>
+        <div class="bg-white p-4 rounded-2xl shadow-md mb-6">
+            <input type="text" id="topicInput" placeholder="주제를 입력하세요" class="w-full p-3 border rounded-xl mb-2 outline-none">
+            <button onclick="addTopic()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">학습 등록</button>
         </div>
 
-        <div id="dashboard" class="grid gap-4"></div>
+        <div id="dashboard" class="space-y-4"></div>
     </div>
 
     <script>
-        let topics = JSON.parse(localStorage.getItem('ebbinghaus_topics') || '[]');
-        const notifStatusDiv = document.getElementById('notifStatus');
+        let topics = JSON.parse(localStorage.getItem('ebbinghaus_v3') || '[]');
 
-        // [해결 1] 알림 권한 상태를 명확히 체크하고 요청하는 함수
-        function checkNotificationPermission() {
-            if (!("Notification" in window)) {
-                notifStatusDiv.innerText = "🚨 이 브라우저는 알림을 지원하지 않습니다.";
-                notifStatusDiv.classList.add("bg-red-100", "text-red-700");
-                return;
-            }
+        // 서비스 워커 등록
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => {
+                console.log('Service Worker Registered');
+            });
+        }
 
-            if (Notification.permission === "granted") {
-                notifStatusDiv.innerText = "✅ 알림 활성화됨";
-                notifStatusDiv.classList.add("bg-green-100", "text-green-700");
-            } else if (Notification.permission === "denied") {
-                notifStatusDiv.innerText = "❌ 알림 차단됨 (주소창 설정을 확인하세요)";
-                notifStatusDiv.classList.add("bg-red-100", "text-red-700");
-            } else {
-                notifStatusDiv.innerText = "🔔 알림 권한이 필요합니다 (클릭하여 허용)";
-                notifStatusDiv.classList.add("bg-yellow-100", "text-yellow-700", "cursor-pointer");
-                notifStatusDiv.onclick = () => {
-                    Notification.requestPermission().then(permission => {
-                        location.reload(); // 권한 변경 후 새로고침
+        function requestNotif() {
+            Notification.requestPermission().then(perm => {
+                updateNotifUI(perm);
+                if(perm === 'granted') {
+                    navigator.serviceWorker.ready.then(reg => {
+                        reg.showNotification("알림 설정 완료!", { body: "이제 복습 알림을 보내드릴게요." });
                     });
-                };
-            }
+                }
+            });
         }
 
-        // [해결 2] 즉시 알림 테스트 함수
-        function testNotification() {
-            if (Notification.permission === "granted") {
-                new Notification("테스트 알림", {
-                    body: "알림이 정상적으로 작동하고 있습니다!",
-                    icon: "https://cdn-icons-png.flaticon.com/512/3652/3652191.png"
-                });
-            } else {
-                alert("알림 권한이 허용되지 않았습니다.");
-                checkNotificationPermission();
-            }
-        }
-
-        function calculateSchedule(baseDate) {
-            // 테스트를 위해 1차 주기를 10초(10 * 1000ms)로 짧게 설정해볼 수 있습니다. 
-            // 실제 사용시에는 원래대로 10 * 60 * 1000 (10분)을 사용하세요.
-            const intervals = [
-                { label: '1차 (10분)', offset: 10 * 60 * 1000 },
-                { label: '2차 (1일)', offset: 24 * 60 * 60 * 1000 },
-                { label: '3차 (7일)', offset: 7 * 24 * 60 * 60 * 1000 },
-                { label: '4차 (30일)', offset: 30 * 24 * 60 * 60 * 1000 }
-            ];
-            return intervals.map((inv, index) => ({
-                step: index + 1,
-                label: inv.label,
-                due: baseDate + inv.offset,
-                status: 'waiting',
-                notified: false // 중복 알림 방지
-            }));
+        function updateNotifUI(perm) {
+            const el = document.getElementById('notifStatus');
+            if(perm === 'granted') { el.innerText = "✅ 시스템 알림 활성화됨"; el.className = "text-green-600 bg-green-50 p-1 rounded"; }
+            else { el.innerText = "❌ 알림 차단됨 (설정 필요)"; el.className = "text-red-600 bg-red-50 p-1 rounded"; }
         }
 
         function addTopic() {
             const input = document.getElementById('topicInput');
-            if (!input.value.trim()) return;
-
+            if(!input.value.trim()) return;
             const now = Date.now();
-            const newTopic = {
+            topics.push({
                 id: now,
                 title: input.value,
-                regDate: now,
-                schedules: calculateSchedule(now)
-            };
-
-            topics.push(newTopic);
-            saveAndRender();
+                schedules: [
+                    { label: '1차(10분)', due: now + 10*60*1000 },
+                    { label: '2차(1일)', due: now + 24*60*60*1000 },
+                    { label: '3차(7일)', due: now + 7*24*60*60*1000 },
+                    { label: '4차(30일)', due: now + 30*24*60*60*1000 }
+                ].map(s => ({...s, status: 'waiting', notified: false}))
+            });
             input.value = '';
-            
-            // 등록 직후 권한이 없다면 다시 요청
-            if (Notification.permission !== "granted") checkNotificationPermission();
+            saveAndRender();
         }
 
         function updateStatuses() {
             const now = Date.now();
             let changed = false;
-
-            topics.forEach(topic => {
-                topic.schedules.forEach(sched => {
-                    if (sched.status === 'waiting' && now >= sched.due) {
-                        sched.status = 'ready';
-                        changed = true;
-                    }
-                    
-                    // [해결 3] 'ready' 상태이면서 아직 알림을 보내지 않은 경우에만 발송
-                    if (sched.status === 'ready' && !sched.notified) {
-                        sendNotification(topic.title, sched.label);
-                        sched.notified = true;
+            topics.forEach(t => {
+                t.schedules.forEach(s => {
+                    if (s.status === 'waiting' && now >= s.due) {
+                        s.status = 'ready';
+                        if (!s.notified) {
+                            sendSystemNotif(t.title, s.label);
+                            s.notified = true;
+                        }
                         changed = true;
                     }
                 });
             });
-
             if (changed) saveAndRender();
         }
 
-        function sendNotification(title, step) {
-            if (Notification.permission === "granted") {
-                try {
-                    const n = new Notification("📝 복습 시간!", {
-                        body: `[${title}] ${step} 미션을 수행하세요.`,
-                        icon: "https://cdn-icons-png.flaticon.com/512/3652/3652191.png",
-                        tag: title + step, // 동일 알림 중복 방지
-                        requireInteraction: true // 사용자가 닫기 전까지 유지 (일부 브라우저)
+        function sendSystemNotif(title, label) {
+            if (Notification.permission === 'granted') {
+                navigator.serviceWorker.ready.then(reg => {
+                    reg.showNotification("📝 복습 시간!", {
+                        body: `[${title}] ${label} 미션을 수행하세요.`,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png',
+                        vibrate: [200, 100, 200],
+                        tag: title + label
                     });
-                    n.onclick = () => { window.focus(); };
-                } catch (e) {
-                    console.error("알림 발송 실패:", e);
-                }
+                });
             }
         }
 
-        function completeStep(topicId, stepIndex) {
-            const topic = topics.find(t => t.id === topicId);
-            if (topic) {
-                topic.schedules[stepIndex].status = 'done';
-                saveAndRender();
-            }
+        function complete(id, idx) {
+            const t = topics.find(i => i.id === id);
+            if(t) { t.schedules[idx].status = 'done'; saveAndRender(); }
         }
 
         function saveAndRender() {
-            localStorage.setItem('ebbinghaus_topics', JSON.stringify(topics));
+            localStorage.setItem('ebbinghaus_v3', JSON.stringify(topics));
             render();
-        }
-
-        function deleteTopic(id) {
-            if(confirm("정말 삭제하시겠습니까?")) {
-                topics = topics.filter(t => t.id !== id);
-                saveAndRender();
-            }
         }
 
         function render() {
             const container = document.getElementById('dashboard');
             container.innerHTML = '';
-
-            topics.slice().reverse().forEach(topic => {
+            topics.slice().reverse().forEach(t => {
                 const card = document.createElement('div');
-                card.className = 'bg-white p-5 rounded-xl shadow-sm border border-gray-200';
-                
-                let schedulesHtml = '';
-                topic.schedules.forEach((s, idx) => {
-                    const isDone = s.status === 'done';
+                card.className = 'bg-white p-4 rounded-2xl shadow-sm border border-gray-100';
+                let html = `<div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800">${t.title}</h3>
+                                <button onclick="deleteTopic(${t.id})" class="text-gray-300">✕</button>
+                            </div><div class="grid grid-cols-2 gap-2">`;
+                t.schedules.forEach((s, i) => {
                     const isReady = s.status === 'ready';
-                    const dateStr = new Date(s.due).toLocaleString('ko-KR', { 
-                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-                    });
-
-                    schedulesHtml += `
-                        <div class="flex items-center justify-between p-3 mb-2 rounded-lg ${isDone ? 'status-done' : (isReady ? 'status-ready' : 'status-waiting')}">
-                            <div class="flex flex-col">
-                                <span class="text-[10px] font-bold uppercase ${isReady ? 'text-red-600' : 'text-gray-500'}">${s.label}</span>
-                                <span class="text-sm font-medium">${isDone ? '✅ 완료' : dateStr}</span>
-                            </div>
-                            ${isReady ? 
-                                `<button onclick="completeStep(${topic.id}, ${idx})" class="bg-red-500 text-white px-3 py-1 rounded shadow-sm hover:bg-red-600 animate-pulse">완료</button>` 
-                                : (isDone ? '' : '<span class="text-[10px] text-blue-400 font-bold italic">WAITING</span>')}
-                        </div>
-                    `;
+                    const isDone = s.status === 'done';
+                    const date = new Date(s.due).toLocaleString('ko-KR', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                    html += `<div class="p-2 rounded-xl text-center ${isDone ? 'status-done' : (isReady ? 'status-ready' : 'status-waiting')}">
+                                <div class="text-[10px] font-bold text-gray-400">${s.label}</div>
+                                <div class="text-[11px] mb-1">${isDone ? '✅' : date}</div>
+                                ${isReady ? `<button onclick="complete(${t.id}, ${i})" class="bg-red-500 text-white text-xs px-2 py-1 rounded-lg">완료</button>` : ''}
+                             </div>`;
                 });
-
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-4 border-b pb-2">
-                        <h3 class="text-xl font-bold text-gray-800">${topic.title}</h3>
-                        <button onclick="deleteTopic(${topic.id})" class="text-gray-400 hover:text-red-500">✕</button>
-                    </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        ${schedulesHtml}
-                    </div>
-                `;
+                card.innerHTML = html + `</div>`;
                 container.appendChild(card);
             });
         }
 
-        // 초기 실행
-        checkNotificationPermission();
-        render();
-        // 10초마다 상태 체크 (더 자주 체크하도록 변경)
+        function deleteTopic(id) { if(confirm('삭제할까요?')) { topics = topics.filter(t => t.id !== id); saveAndRender(); } }
+
+        updateNotifUI(Notification.permission);
         setInterval(updateStatuses, 10000);
+        render();
     </script>
 </body>
 </html>
