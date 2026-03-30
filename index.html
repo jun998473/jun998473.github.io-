@@ -6,49 +6,51 @@
     <title>에빙하우스 캘린더 매니저</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .modal-animate { animation: slideUp 0.4s ease-out; }
+        .btn-shadow { shadow-lg shadow-blue-200; }
+        .modal-bg { background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
 
     <div class="max-w-md mx-auto p-6 pb-24">
-        <header class="py-10 text-center">
-            <h1 class="text-3xl font-black text-blue-600 tracking-tight">REMIND CAL</h1>
-            <p class="text-sm text-slate-400 font-medium mt-1 uppercase tracking-widest">Automatic Review Scheduler</p>
+        <header class="py-8 text-center">
+            <h1 class="text-3xl font-black text-blue-600 tracking-tight italic">REMIND-IT</h1>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Ebbinghaus Scheduler</p>
         </header>
 
-        <!-- 입력 섹션 -->
-        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 mb-10">
-            <label class="block text-xs font-bold text-slate-400 mb-2 ml-1">LEARNING TOPIC</label>
+        <!-- 입력부 -->
+        <div class="bg-white p-6 rounded-[2rem] shadow-xl shadow-slate-200 border border-white mb-8">
+            <label class="block text-[10px] font-black text-slate-400 mb-3 ml-1 uppercase">New Learning Topic</label>
             <input type="text" id="topicInput" placeholder="공부한 주제를 입력하세요" 
                 class="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none mb-4 text-lg font-bold">
-            <button onclick="handleRegistration()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg shadow-blue-200 shadow-2xl active:scale-95 transition-all">
-                학습 등록 & 캘린더 연동
+            <button onclick="handleRegistration()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-blue-100 active:scale-95 transition-all">
+                학습 등록 (캘린더 연동)
             </button>
         </div>
 
-        <!-- 최근 등록 리스트 -->
-        <h2 class="text-sm font-bold text-slate-500 mb-4 ml-1 uppercase">Recent Topics</h2>
-        <div id="dashboard" class="space-y-4"></div>
+        <div id="dashboard" class="space-y-4 text-sm font-medium"></div>
     </div>
 
-    <!-- 등록 성공 모달 (팝업) -->
-    <div id="successModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center p-4">
-        <div class="bg-white w-full max-w-sm rounded-3xl p-8 modal-animate text-center shadow-2xl">
-            <div class="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl">✓</div>
-            <h3 class="text-2xl font-bold text-slate-800 mb-2">등록 준비 완료!</h3>
-            <p class="text-slate-500 mb-8 leading-relaxed">아래 버튼을 눌러 파일을 열면<br><span class="font-bold text-blue-600 text-lg">4개의 복습 일정</span>이 달력에 자동 등록됩니다.</p>
+    <!-- 성공 모달 -->
+    <div id="successModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6 modal-bg">
+        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center shadow-2xl overflow-hidden relative">
+            <div class="text-5xl mb-6">📅</div>
+            <h3 class="text-2xl font-black text-slate-800 mb-2">달력에 추가할까요?</h3>
+            <p class="text-slate-500 text-sm mb-8 leading-relaxed">
+                확인 버튼을 누른 후, 상단 알림 바에서<br>
+                <span class="font-bold text-blue-600 underline text-base">다운로드된 파일을 클릭</span>하면<br>
+                4개의 복습 일정이 자동 등록됩니다.
+            </p>
             
-            <a id="downloadLink" class="block w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg mb-3 shadow-lg cursor-pointer">
-                📅 지금 달력에 추가하기
+            <a id="downloadLink" onclick="closeModal()" class="block w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg mb-3 shadow-lg shadow-blue-100">
+                파일 다운로드 & 열기
             </a>
-            <button onclick="closeModal()" class="w-full py-4 text-slate-400 font-bold hover:text-slate-600">나중에 하기</button>
+            <button onclick="closeModal()" class="w-full py-2 text-slate-400 font-bold text-sm uppercase tracking-widest">나중에 하기</button>
         </div>
     </div>
 
     <script>
-        let topics = JSON.parse(localStorage.getItem('ebbinghaus_v4') || '[]');
+        let topics = JSON.parse(localStorage.getItem('ebbinghaus_v5') || '[]');
 
         function handleRegistration() {
             const input = document.getElementById('topicInput');
@@ -63,9 +65,8 @@
                 { label: '4차(30일)', due: now + 30 * 24 * 60 * 60 * 1000 }
             ];
 
-            const topicData = { id: now, title, schedules };
-            topics.push(topicData);
-            localStorage.setItem('ebbinghaus_v4', JSON.stringify(topics));
+            topics.push({ id: now, title, schedules });
+            localStorage.setItem('ebbinghaus_v5', JSON.stringify(topics));
             
             render();
             showModal(title, schedules);
@@ -79,14 +80,11 @@
             
             const link = document.getElementById('downloadLink');
             link.href = url;
-            link.setAttribute("download", `${title}_복습일정.ics`);
+            // 중복 방지를 위해 파일명에 타임스탬프 추가
+            const timestamp = Math.floor(Date.now() / 1000);
+            link.setAttribute("download", `복습_${timestamp}.ics`);
             
             document.getElementById('successModal').classList.remove('hidden');
-            
-            // 자동 실행 시도 (일부 브라우저 차단될 수 있음)
-            setTimeout(() => {
-                link.click();
-            }, 500);
         }
 
         function closeModal() {
@@ -119,22 +117,21 @@
                 card.innerHTML = `
                     <div>
                         <h3 class="font-bold text-slate-800">${t.title}</h3>
-                        <p class="text-[10px] text-slate-400 font-medium">등록: ${new Date(t.id).toLocaleDateString()}</p>
+                        <p class="text-[10px] text-slate-400">등록됨: ${new Date(t.id).toLocaleString('ko-KR')}</p>
                     </div>
-                    <button onclick="deleteTopic(${t.id})" class="text-slate-300 hover:text-red-500 p-2">✕</button>
+                    <button onclick="deleteTopic(${t.id})" class="text-slate-300 p-2 text-xl">✕</button>
                 `;
                 container.appendChild(card);
             });
         }
 
         function deleteTopic(id) {
-            if(confirm('이 주제를 삭제할까요? (달력 일정은 직접 삭제해야 합니다)')) {
+            if(confirm('이 목록을 삭제할까요?\n(이미 달력에 등록된 일정은 수동으로 지우셔야 합니다)')) {
                 topics = topics.filter(t => t.id !== id);
-                localStorage.setItem('ebbinghaus_v4', JSON.stringify(topics));
+                localStorage.setItem('ebbinghaus_v5', JSON.stringify(topics));
                 render();
             }
         }
-
         render();
     </script>
 </body>
