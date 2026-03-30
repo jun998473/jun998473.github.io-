@@ -5,93 +5,109 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>에빙하우스 캘린더 매니저</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal-animate { animation: slideUp 0.4s ease-out; }
+    </style>
 </head>
-<body class="bg-slate-100 min-h-screen p-4">
-    <div class="max-w-md mx-auto">
-        <header class="py-6 text-center">
-            <h1 class="text-2xl font-bold text-slate-800">📅 스마트 복습 플래너</h1>
-            <p class="text-xs text-slate-500 mt-1">주제 등록 시 캘린더 알림 자동 생성</p>
+<body class="bg-slate-50 min-h-screen">
+
+    <div class="max-w-md mx-auto p-6 pb-24">
+        <header class="py-10 text-center">
+            <h1 class="text-3xl font-black text-blue-600 tracking-tight">REMIND CAL</h1>
+            <p class="text-sm text-slate-400 font-medium mt-1 uppercase tracking-widest">Automatic Review Scheduler</p>
         </header>
 
-        <!-- 주제 입력 -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-6">
+        <!-- 입력 섹션 -->
+        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 mb-10">
+            <label class="block text-xs font-bold text-slate-400 mb-2 ml-1">LEARNING TOPIC</label>
             <input type="text" id="topicInput" placeholder="공부한 주제를 입력하세요" 
-                class="w-full p-3 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none mb-3 text-sm">
-            <button onclick="addTopicAndDownload()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition">
-                학습 등록 & 캘린더 파일 생성
+                class="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none mb-4 text-lg font-bold">
+            <button onclick="handleRegistration()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg shadow-blue-200 shadow-2xl active:scale-95 transition-all">
+                학습 등록 & 캘린더 연동
             </button>
-            <p class="text-[10px] text-gray-400 mt-2">* 생성된 파일을 열면 캘린더에 4회차 일정이 자동 등록됩니다.</p>
         </div>
 
-        <!-- 리스트 -->
+        <!-- 최근 등록 리스트 -->
+        <h2 class="text-sm font-bold text-slate-500 mb-4 ml-1 uppercase">Recent Topics</h2>
         <div id="dashboard" class="space-y-4"></div>
     </div>
 
-    <script>
-        let topics = JSON.parse(localStorage.getItem('ebbinghaus_cal_v1') || '[]');
-
-        function save() { localStorage.setItem('ebbinghaus_cal_v1', JSON.stringify(topics)); render(); }
-
-        // 캘린더 파일(ICS) 포맷 생성 함수
-        function createICS(title, schedules) {
-            let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Ebbinghaus Manager//KO\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n";
+    <!-- 등록 성공 모달 (팝업) -->
+    <div id="successModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-8 modal-animate text-center shadow-2xl">
+            <div class="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl">✓</div>
+            <h3 class="text-2xl font-bold text-slate-800 mb-2">등록 준비 완료!</h3>
+            <p class="text-slate-500 mb-8 leading-relaxed">아래 버튼을 눌러 파일을 열면<br><span class="font-bold text-blue-600 text-lg">4개의 복습 일정</span>이 달력에 자동 등록됩니다.</p>
             
-            schedules.forEach((s, idx) => {
-                const start = new Date(s.due);
-                const end = new Date(s.due + 15 * 60 * 1000); // 15분간 복습 세션
-                
-                const formatDate = (date) => date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-                
-                icsContent += "BEGIN:VEVENT\n";
-                icsContent += `SUMMARY:[복습] ${title} (${s.label})\n`;
-                icsContent += `DTSTART:${formatDate(start)}\n`;
-                icsContent += `DTEND:${formatDate(end)}\n`;
-                icsContent += `DESCRIPTION:에빙하우스 망각곡선 기반 ${s.label} 복습 미션입니다.\\n학습 주제: ${title}\n`;
-                icsContent += "BEGIN:VALARM\nTRIGGER:-PT5M\nACTION:DISPLAY\nDESCRIPTION:복습 알림\nEND:VALARM\n"; // 5분 전 알림
-                icsContent += "END:VEVENT\n";
-            });
+            <a id="downloadLink" class="block w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg mb-3 shadow-lg cursor-pointer">
+                📅 지금 달력에 추가하기
+            </a>
+            <button onclick="closeModal()" class="w-full py-4 text-slate-400 font-bold hover:text-slate-600">나중에 하기</button>
+        </div>
+    </div>
 
-            icsContent += "END:VCALENDAR";
-            return icsContent;
-        }
+    <script>
+        let topics = JSON.parse(localStorage.getItem('ebbinghaus_v4') || '[]');
 
-        function downloadICS(filename, content) {
-            const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
-            const link = document.createElement("a");
-            link.href = window.URL.createObjectURL(blob);
-            link.setAttribute("download", filename);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function addTopicAndDownload() {
+        function handleRegistration() {
             const input = document.getElementById('topicInput');
-            if (!input.value.trim()) return;
+            const title = input.value.trim();
+            if (!title) return;
 
             const now = Date.now();
-            const intervals = [
-                { l: '1차(10분)', t: 10 * 60 * 1000 },
-                { l: '2차(1일)', t: 24 * 60 * 60 * 1000 },
-                { l: '3차(7일)', t: 7 * 24 * 60 * 60 * 1000 },
-                { l: '4차(30일)', t: 30 * 24 * 60 * 60 * 1000 }
+            const schedules = [
+                { label: '1차(10분)', due: now + 10 * 60 * 1000 },
+                { label: '2차(1일)', due: now + 24 * 60 * 60 * 1000 },
+                { label: '3차(7일)', due: now + 7 * 24 * 60 * 60 * 1000 },
+                { label: '4차(30일)', due: now + 30 * 24 * 60 * 60 * 1000 }
             ];
 
-            const newSchedules = intervals.map(inv => ({
-                label: inv.l,
-                due: now + inv.t,
-                status: 'waiting'
-            }));
-
-            topics.push({ id: now, title: input.value, schedules: newSchedules });
-
-            // 캘린더 파일 생성 및 다운로드
-            const icsData = createICS(input.value, newSchedules);
-            downloadICS(`${input.value}_복습일정.ics`, icsData);
-
+            const topicData = { id: now, title, schedules };
+            topics.push(topicData);
+            localStorage.setItem('ebbinghaus_v4', JSON.stringify(topics));
+            
+            render();
+            showModal(title, schedules);
             input.value = '';
-            save();
-            alert("캘린더 파일이 생성되었습니다!\n파일을 열어 '모두 추가'를 누르면 달력에 등록됩니다.");
+        }
+
+        function showModal(title, schedules) {
+            const icsContent = createICS(title, schedules);
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            
+            const link = document.getElementById('downloadLink');
+            link.href = url;
+            link.setAttribute("download", `${title}_복습일정.ics`);
+            
+            document.getElementById('successModal').classList.remove('hidden');
+            
+            // 자동 실행 시도 (일부 브라우저 차단될 수 있음)
+            setTimeout(() => {
+                link.click();
+            }, 500);
+        }
+
+        function closeModal() {
+            document.getElementById('successModal').classList.add('hidden');
+        }
+
+        function createICS(title, schedules) {
+            let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Ebbinghaus Manager//KO\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n";
+            const formatDate = (date) => new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+            
+            schedules.forEach(s => {
+                ics += "BEGIN:VEVENT\n";
+                ics += `SUMMARY:[복습] ${title} (${s.label})\n`;
+                ics += `DTSTART:${formatDate(s.due)}\n`;
+                ics += `DTEND:${formatDate(s.due + 15 * 60 * 1000)}\n`;
+                ics += `DESCRIPTION:에빙하우스 망각곡선 기반 복습 세션\\n주제: ${title}\\n차수: ${s.label}\n`;
+                ics += "BEGIN:VALARM\nTRIGGER:-PT5M\nACTION:DISPLAY\nDESCRIPTION:복습 알림\nEND:VALARM\n";
+                ics += "END:VEVENT\n";
+            });
+            ics += "END:VCALENDAR";
+            return ics;
         }
 
         function render() {
@@ -99,25 +115,25 @@
             container.innerHTML = '';
             topics.slice().reverse().forEach(t => {
                 const card = document.createElement('div');
-                card.className = 'bg-white rounded-2xl p-4 shadow-sm border border-slate-200';
-                let html = `<div class="flex justify-between items-center mb-3">
-                                <h3 class="font-bold text-slate-800">${t.title}</h3>
-                                <button onclick="deleteTopic(${t.id})" class="text-slate-300">✕</button>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">`;
-                t.schedules.forEach(s => {
-                    const date = new Date(s.due).toLocaleString('ko-KR', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-                    html += `<div class="bg-slate-50 p-2 rounded-xl text-center border border-slate-100">
-                                <div class="text-[9px] font-bold text-slate-400 uppercase">${s.label}</div>
-                                <div class="text-[11px] font-medium text-slate-600">${date}</div>
-                             </div>`;
-                });
-                card.innerHTML = html + `</div>`;
+                card.className = 'bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex justify-between items-center';
+                card.innerHTML = `
+                    <div>
+                        <h3 class="font-bold text-slate-800">${t.title}</h3>
+                        <p class="text-[10px] text-slate-400 font-medium">등록: ${new Date(t.id).toLocaleDateString()}</p>
+                    </div>
+                    <button onclick="deleteTopic(${t.id})" class="text-slate-300 hover:text-red-500 p-2">✕</button>
+                `;
                 container.appendChild(card);
             });
         }
 
-        function deleteTopic(id) { if(confirm('삭제할까요?')) { topics = topics.filter(t => t.id !== id); save(); } }
+        function deleteTopic(id) {
+            if(confirm('이 주제를 삭제할까요? (달력 일정은 직접 삭제해야 합니다)')) {
+                topics = topics.filter(t => t.id !== id);
+                localStorage.setItem('ebbinghaus_v4', JSON.stringify(topics));
+                render();
+            }
+        }
 
         render();
     </script>
